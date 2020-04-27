@@ -7,14 +7,15 @@ export ARCH=aarch64
 export RFS_WIFI_SSID="$WIFI_SSID"
 export RFS_WIFI_PASSWORD="$WIFI_PASSWORD"
 assert_not_empty "DISTRO" "$DISTRO" "distro name must be set"
-assert_not_empty "TOP" "$TOP" "TOP must be set"
-assert_not_empty "SYSROOT" "$SYSROOT" "SYSROOT must be set"
+readonly SYSROOT="$(pwd)/out/$DISTRO/rootfs"
+local -r sysroot_dir="$(dirname "$SYSROOT")"
+log_info "creating parent directory $sysroot_dir"
+mkdir -p "$sysroot_dir"
 log_info "distro is set to $DISTRO"
-log_info "top is set to $TOP"
 log_info "SYSROOT is set to $SYSROOT"
-if [[ ! -d "$(pwd)/$SYSROOT" ]]; then
-  log_warn "SYSROOT directory  $(pwd)/$SYSROOT not found. creating ..."
-  mkdir -p "$(pwd)/$SYSROOT"
+if [[ ! -d "$SYSROOT" ]]; then
+  log_warn "SYSROOT directory  $SYSROOT not found. creating ..."
+  mkdir -p "$SYSROOT"
 fi
 if [[ ! -d "$(pwd)/distros/$DISTRO" ]]; then
   log_error "directory $(pwd)/distros/$DISTRO not found!";

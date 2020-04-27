@@ -133,6 +133,7 @@ function setup_bcm4354(){
     local -r target="$SYSROOT/lib/firmware/brcm/BCM4354.hcd"
     local -r dir="$(dirname "$target")"
     log_info "creating parent directory $dir"
+    mkdir -p "$dir"
     local -r url="https://github.com/denysvitali/linux-smaug/blob/v4.17-rc3/firmware/bcm4354.hcd?raw=true"
     log_info "downloading $url"
     wget -O "$target" "$url"
