@@ -27,7 +27,7 @@ fi
 # readonly temp_build_script="$(pwd)/distros/debian/build.sh"
 readonly build_script="$(pwd)/distros/$DISTRO/build.sh"
 log_info "setting ownership of '$SYSROOT' to uid '$UID'"
-sudo chown -R "$UID:$GID" "$SYSROOT"
+sudo chown -R "$UID:$UID" "$SYSROOT"
 source "$build_script"
 if [ "$?" -ne "0" ]; then
   exit 1;
