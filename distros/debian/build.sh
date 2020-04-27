@@ -187,6 +187,8 @@ function keyboard_setup(){
     local -r rootfs="$1"
     local target="$rootfs/etc/lightdm/lightdm-gtk-greeter.conf"
     local dir="$(dirname "$target")"
+    local -r KB_LAYOUT="us"
+    local -r KB_MAP="pc104"
     log_info "creating parent directory $dir"
     mkdir -p "$dir"
     sed -i 's/#keyboard=/keyboard=onboard/' "$target"
@@ -282,11 +284,7 @@ T=$(pwd)
 
 log_info "making build directory $build_dir"
 mkdir -p "$build_dir"
- pushd "$build_dir" >/dev/null 2>&1
-    if [[ ! -z "$KB_LAYOUT" -o -! -z "$KB_MAP" ]]; then
-    KB_LAYOUT = "ch"
-    KB_MAP = "de"
-    fi
+pushd "$build_dir" >/dev/null 2>&1
     $(prepare_rootfs "$rootfs_dir")
     $(setup_mounts "$rootfs_dir")
     $(hostname_setup "$host_name" "$rootfs_dir")
