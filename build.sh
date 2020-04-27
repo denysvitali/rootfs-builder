@@ -6,8 +6,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/os/os.sh"
 export ARCH=aarch64
 export RFS_WIFI_SSID="$WIFI_SSID"
 export RFS_WIFI_PASSWORD="$WIFI_PASSWORD"
-readonly uid=0 
-readonly gid=0 
 assert_not_empty "DISTRO" "$DISTRO" "distro name must be set"
 # readonly SYSROOT="$(pwd)/out/$DISTRO/rootfs"
 readonly SYSROOT="/tmp/rootfs"
@@ -28,8 +26,8 @@ if [[ ! -d "$(pwd)/distros/$DISTRO" ]]; then
 fi
 # readonly temp_build_script="$(pwd)/distros/debian/build.sh"
 readonly build_script="$(pwd)/distros/$DISTRO/build.sh"
-log_info "setting ownership of '$SYSROOT' to uid '$uid'"
-sudo chown -R "$uid:$gid" "$SYSROOT"
+log_info "setting ownership of '$SYSROOT' to uid '$UID'"
+sudo chown -R "$UID:$GID" "$SYSROOT"
 source "$build_script"
 if [ "$?" -ne "0" ]; then
   exit 1;
