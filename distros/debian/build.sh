@@ -61,10 +61,10 @@ function prepare_rootfs(){
         "qemu-user-static"
     )
     for i in "${packages[@]}"; do 
-        apt-get install -yq "$i"
+        apt-get install -y "$i"
     done    
     update-binfmts --enable qemu-aarch64
-    log_info "creartin rootfs directory '$rootfs'..."
+    log_info "crearting rootfs directory '$rootfs'..."
     mkdir "$rootfs"
     log_info "setting up keyring for debian "$code_name"..."
     qemu-debootstrap --include=debian-archive-keyring --arch arm64 "$code_name" rootfs
