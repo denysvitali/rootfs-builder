@@ -9,25 +9,27 @@ export RFS_WIFI_PASSWORD="$WIFI_PASSWORD"
 assert_not_empty "DISTRO" "$DISTRO" "distro name must be set"
 assert_not_empty "TOP" "$TOP" "TOP must be set"
 assert_not_empty "SYSROOT" "$SYSROOT" "SYSROOT must be set"
-if [[ ! -d "distros/$DISTRO" ]]; then
-  log_error "Distro \"$DISTRO\" not found!";
+log_info "distro is set to $DISTRO"
+log_info "top is set to $TOP"
+log_info "SYSROOT is set to $SYSROOT"
+if [[ ! -d "$(pwd)/$SYSROOT" ]]; then
+  log_warn "SYSROOT directory  $(pwd)/$SYSROOT not found. creating ..."
+  mkdir -p "$(pwd)/$SYSROOT"
+fi
+if [[ ! -d "$(pwd)/distros/$DISTRO" ]]; then
+  log_error "directory $(pwd)/distros/$DISTRO not found!";
   distros=$(ls distros)
   log_info "Distros available: $distros";
   exit 1
 fi
-if [[ ! $(file_exists "distros/$DISTRO/build.sh") ]]; then
-  log_error "distros/$DISTRO/build.sh not found!"
+if [[ ! $(file_exists "$(pwd)/distros/$DISTRO/build.sh") ]]; then
+  log_error "$(pwd)/distros/$DISTRO/build.sh not found!"
   exit 1;
 fi
 
-if [[ ! -d "$SYSROOT" ]]; then
-  echo "SYSROOT directory not found!";
-  log_warn "SYSROOT directory $SYSROOT not found. creatin ..."
-  mkdir -p "$SYSROOT"
-fi
 log_info "setting ownership of '$SYSROOT' to UID '$UID'"
 sudo chown -R "$UID:$GID" "$SYSROOT"
-source "distros/$DISTRO/build.sh"
+source "$(pwd)/distros/$DISTRO/build.sh"
 if [ "$?" -ne "0" ]; then
   exit 1;
 fi 
