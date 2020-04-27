@@ -31,7 +31,13 @@ export DEBIAN_FRONTEND=noninteractive
 export DEBCONF_NONINTERACTIVE_SEEN=true
 function run_in_qemu(){
     # TODO use local variables
-    PROOT_NO_SECCOMP=1 proot -0 -r "$SYSROOT" -q "qemu-$ARCH-static" -b /etc/resolv.conf -b /etc/mtab -b /proc -b /sys "$*"
+    PROOT_NO_SECCOMP=1 \
+    proot -0 -r "$SYSROOT" \
+    -q "qemu-$ARCH-static" \
+    -b /etc/resolv.conf \
+    -b /etc/mtab \
+    -b /proc \
+    -b /sys "$*"
 }
 function enable_systemd_services(){
     local -r services="$1"
