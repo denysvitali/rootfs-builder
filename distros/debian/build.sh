@@ -28,6 +28,7 @@ readonly main_dependancies=(
     "rsyslog" 
     "bash-completion" 
     "ifupdown" 
+    "systemd"
 )
 readonly systemd_services=(
     "NetworkManager"
@@ -52,7 +53,6 @@ function prepare_rootfs(){
         log_error "prepare_rootfs needs root permission to run.exiting..."
         exit 1
     fi
-    local -r rootfs="$1"
     log_info "preparing rootfs..."
     log_info "installing dependancies..."
     local -r packages=(
@@ -64,10 +64,10 @@ function prepare_rootfs(){
         apt-get install -y "$i"
     done    
     update-binfmts --enable qemu-aarch64
-    log_info "crearting rootfs directory '$rootfs'..."
-    mkdir "$rootfs"
+    log_info "crearting rootfs directory '$rootfs_dir'..."
+    mkdir "$rootfs_dir"
     log_info "setting up keyring for debian "$code_name"..."
-    qemu-debootstrap --include=debian-archive-keyring --arch arm64 "$code_name" rootfs
+    qemu-debootstrap --include=debian-archive-keyring --arch arm64 "$code_name" "$rootfs_dir"
 }
 function setup_mounts(){
     if ! is_root; then
@@ -75,8 +75,7 @@ function setup_mounts(){
         exit 1
     fi
     log_info "setting up mounts..."
-    local -r rootfs="$1"
-    pushd "$rootfs" >/dev/null 2>&1
+    pushd "$rootfs_dir" >/dev/null 2>&1
         mount -t sysfs sysfs sys/
         mount -t proc  proc proc/
         mount -o bind /dev dev/
@@ -90,9 +89,8 @@ function teardown_mounts(){
         log_error "teardown_mounts needs root permission to run.exiting..."
         exit 1
     fi
-    local -r rootfs="$1"
     log_info "tearing down mounts..."
-    pushd "$rootfs" >/dev/null 2>&1
+    pushd "$rootfs_dir" >/dev/null 2>&1
         umount ./dev/pts
         umount ./dev
         umount ./proc
@@ -106,7 +104,11 @@ function enable_systemd_services(){
     local -r services="$1"
     for i in "${services[@]}"; do
         log_info "enabling service $i"
-        run_in_qemu systemctl enable "$i"
+        chroot "$rootfs_dir" \
+        env -i HOME="/root" \
+            PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+            TERM="$TERM" \
+            systemctl enable "$i"
     done
 }
 function hostname_setup(){
@@ -115,9 +117,8 @@ function hostname_setup(){
         exit 1
     fi
     local -r host="$1"
-    local -r rootfs="$2"
     log_info "Setting hostname to $host"
-    local -r target="$rootfs/etc/hostname"
+    local -r target="$rootfs_dir/etc/hostname"
     local -r dir="$(dirname "$target")"
     log_info "creating parent directory $dir"
     mkdir -p "$dir"
@@ -129,7 +130,7 @@ cat > "$target" <<EOF
     ff02::2         ip6-allrouters
     127.0.1.1       $host_name
 EOF
-    chroot rootfs env -i /bin/hostname -F /etc/hostname
+    chroot "$rootfs_dir" env -i /bin/hostname -F /etc/hostname
 }
 function install_packages(){
     if ! is_root; then
@@ -137,8 +138,8 @@ function install_packages(){
         exit 1
     fi
     log_info "installing base packages ..."
-    chroot rootfs apt-get update
-    chroot rootfs \
+    chroot "$rootfs_dir" apt-get update
+    chroot "$rootfs_dir" \
         env -i HOME="/root" \
             PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
             TERM="$TERM" \
@@ -146,33 +147,33 @@ function install_packages(){
         apt-get --yes \
             -o DPkg::Options::=--force-confdef \
             install  --no-install-recommends whiptail
-    chroot rootfs \
+    chroot "$rootfs_dir" \
         env -i HOME="/root" \
             PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
             TERM="$TERM" \
         apt-get --yes \
             -o DPkg::Options::=--force-confdef install \
             --no-install-recommends locales
-    chroot rootfs \
+    chroot "$rootfs_dir" \
         env -i HOME="/root" \
             PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
             TERM="$TERM" SHELL="/bin/bash" \
         dpkg-reconfigure locales
-    chroot rootfs \
+    chroot "$rootfs_dir" \
         env -i HOME="/root" \
             PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
             TERM="$TERM" \
         apt-get --yes -o DPkg::Options::=--force-confdef install \
         --no-install-recommends "${main_dependancies[@]}"\
-    chroot rootfs \
+    chroot "$rootfs_dir" \
         env -i HOME="/root" \
             PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
             TERM="$TERM" \
         apt-get --yes -o DPkg::Options::=--force-confdef upgrade
     log_info "clearning up after apt ..."
-    chroot rootfs apt-get --yes clean
-    chroot rootfs apt-get --yes autoclean
-    chroot rootfs apt-get --yes autoremove
+    chroot "$rootfs_dir" apt-get --yes clean
+    chroot "$rootfs_dir" apt-get --yes autoclean
+    chroot "$rootfs_dir" apt-get --yes autoremove
 }
 function setup_user(){
     if ! is_root; then
@@ -184,8 +185,7 @@ function setup_user(){
 }
 function keyboard_setup(){
     log_info "Adding Keyboard to LightDM"
-    local -r rootfs="$1"
-    local target="$rootfs/etc/lightdm/lightdm-gtk-greeter.conf"
+    local target="$rootfs_dir/etc/lightdm/lightdm-gtk-greeter.conf"
     local dir="$(dirname "$target")"
     local -r KB_LAYOUT="us"
     local -r KB_MAP="pc104"
@@ -208,8 +208,7 @@ EOF
 }
 function wifi_setup(){
     log_info "setting up Wi-Fi connection"
-    local -r rootfs="$1"
-    local -r target="$rootfs/etc/NetworkManager/system-connection/wifi-conn-1"
+    local -r target="$rootfs_dir/etc/NetworkManager/system-connection/wifi-conn-1"
     local -r dir="$(dirname "$target")"
     log_info "creating parent directory $dir"
     mkdir -p "$dir"
@@ -240,8 +239,7 @@ EOF
 
 function setup_alarm(){
     log_info "setting up alarm"
-    local -r rootfs="$1"
-    local -r target="$rootfs/home/alarm/.config/openbox/autostart"
+    local -r target="$rootfs_dir/home/alarm/.config/openbox/autostart"
     local -r dir="$(dirname "$target")"
     log_info "creating parent directory $dir"
     mkdir -p "$dir"
@@ -253,8 +251,7 @@ EOF
 
 function setup_bcm4354(){
     log_info "Adding BCM4354.hcd"
-    local -r rootfs="$1"
-    local -r target="$rootfs/lib/firmware/brcm/BCM4354.hcd"
+    local -r target="$rootfs_dir/lib/firmware/brcm/BCM4354.hcd"
     local -r dir="$(dirname "$target")"
     log_info "creating parent directory $dir"
     mkdir -p "$dir"
@@ -263,8 +260,7 @@ function setup_bcm4354(){
     wget -O "$target" "$url"
 }
 function cleanup(){
-    local -r rootfs="$1"
-    local -r target="$rootfs/var/cache"
+    local -r target="$rootfs_dir/var/cache"
     log_info "Removing /var/cache/ content"
     rm -rf "$target"
     mkdir -p "$target"
@@ -285,18 +281,18 @@ T=$(pwd)
 log_info "making build directory $build_dir"
 mkdir -p "$build_dir"
 pushd "$build_dir" >/dev/null 2>&1
-    $(prepare_rootfs "$rootfs_dir")
-    $(setup_mounts "$rootfs_dir")
-    $(hostname_setup "$host_name" "$rootfs_dir")
+    $(prepare_rootfs)
+    $(setup_mounts)
+    $(hostname_setup "$host_name")
     $(install_packages)
     $(setup_user)
     $(enable_systemd_services "${systemd_services[@]}")
-    $(keyboard_setup "$rootfs_dir")
-    $(wifi_setup "$rootfs_dir")
-    $(setup_alarm "$rootfs_dir")
-    $(setup_bcm4354 "$rootfs")
-    $(cleanup "$rootfs")
-    $(teardown_mounts "$rootfs_dir")
+    $(keyboard_setup)
+    $(wifi_setup)
+    $(setup_alarm)
+    $(setup_bcm4354)
+    $(cleanup)
+    $(teardown_mounts)
 [[ "$?" != 0 ]] && popd
 popd >/dev/null 2>&1
 log_info "RootFS generation completed."
