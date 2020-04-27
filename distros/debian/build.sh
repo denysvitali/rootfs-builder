@@ -56,8 +56,8 @@ function prepare_rootfs(){
     log_info "preparing rootfs..."
     log_info "installing dependancies..."
     local -r packages=(
-        "debootstrap "
-        "binfmt-support "
+        "debootstrap"
+        "binfmt-support"
         "qemu-user-static"
     )
     for i in "${packages[@]}"; do 

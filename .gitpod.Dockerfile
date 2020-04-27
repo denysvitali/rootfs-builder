@@ -2,8 +2,13 @@ FROM gitpod/workspace-full
 USER root
 ARG SHELLCHECK_VERSION=stable
 ARG SHELLCHECK_FORMAT=gcc
-RUN apt-get update -q && apt-get install -yq curl strace
-RUN curl -fsSL \
+RUN apt-get update -q && apt-get install -yq curl \
+    strace \
+    debootstrap \
+    binfmt-support \
+    qemu-user-static \
+
+    RUN curl -fsSL \
     https://raw.githubusercontent.com/da-moon/rootfs-builder/master/bin/fast-apt | sudo bash -s -- \
     --init || true;
 RUN aria2c "https://storage.googleapis.com/shellcheck/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
