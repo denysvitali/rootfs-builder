@@ -23,17 +23,16 @@ if [[ ! -d "$(pwd)/distros/$DISTRO" ]]; then
   log_info "Distros available: $distros";
   exit 1
 fi
-readonly temp_build_script="$(pwd)/distros/debian/build.sh"
+# readonly temp_build_script="$(pwd)/distros/debian/build.sh"
 readonly build_script="$(pwd)/distros/$DISTRO/build.sh"
-if [[ ! $(file_exists "$temp_build_script") ]]; then
-  log_error "$temp_build_script not found!"
-  exit 1;
-fi
+# if [[ ! $(file_exists "$temp_build_script") ]]; then
+#   log_error "$temp_build_script not found!"
+#   exit 1;
+# fi
 
 log_info "setting ownership of '$SYSROOT' to UID '$UID'"
 sudo chown -R "$UID:$GID" "$SYSROOT"
-source "$temp_build_script"
-# source 
+source "$build_script"
 if [ "$?" -ne "0" ]; then
   exit 1;
 fi 
