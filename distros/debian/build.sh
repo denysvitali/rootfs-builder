@@ -3,13 +3,12 @@
 # shellcheck source=./lib/os/os.sh
 source "$(cd "$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")" && pwd)/lib/os/os.sh"
 cat "distros/$DISTRO/logo"
-readonly DISTRO_NAME="Debian"
 readonly code_name="buster"
 readonly time_zone="America/Toronto"
 readonly host_name="pixel-c"
-readonly deb_arch="arm64"
-
-readonly packages=(
+readonly build_dir="$(pwd)/build"
+readonly rootfs_dir="$build_dir/rootfs"
+readonly main_dependancies=(
     "bash"
     "bluez"
     "sudo"
@@ -20,6 +19,15 @@ readonly packages=(
     "lightdm-gtk-greeter"
     "openbox"
     "onboard"
+    "ssh" 
+    "net-tools" 
+    "ethtool" 
+    "wireless-tools" 
+    "init" 
+    "iputils-ping" 
+    "rsyslog" 
+    "bash-completion" 
+    "ifupdown" 
 )
 readonly systemd_services=(
     "NetworkManager"
@@ -29,16 +37,71 @@ readonly systemd_services=(
 )
 export DEBIAN_FRONTEND=noninteractive
 export DEBCONF_NONINTERACTIVE_SEEN=true
-function run_in_qemu(){
-    # TODO use local variables
-    PROOT_NO_SECCOMP=1 \
-    proot -0 -r "$SYSROOT" \
-    -q "qemu-$ARCH-static" \
-    -b /etc/resolv.conf \
-    -b /etc/mtab \
-    -b /proc \
-    -b /sys "$*"
+
+# function timezone_setup(){
+#     local -r zone="$1"
+#     log_info "setting timezone to $zone"
+#     local -r target="$SYSROOT/etc/timezone"
+#     local -r dir="$(dirname "$target")"
+#     log_info "creating parent directory $dir"
+#     mkdir -p "$dir"
+#     echo "$zone" > "$target"
+# }
+function prepare_rootfs(){
+    if ! is_root; then
+        log_error "prepare_rootfs needs root permission to run.exiting..."
+        exit 1
+    fi
+    local -r rootfs="$1"
+    log_info "preparing rootfs..."
+    log_info "installing dependancies..."
+    local -r packages=(
+        "debootstrap "
+        "binfmt-support "
+        "qemu-user-static"
+    )
+    for i in "${packages[@]}"; do 
+        apt-get install -yq "$i"
+    done    
+    update-binfmts --enable qemu-aarch64
+    log_info "creartin rootfs directory '$rootfs'..."
+    mkdir "$rootfs"
+    log_info "setting up keyring for debian "$code_name"..."
+    qemu-debootstrap --include=debian-archive-keyring --arch arm64 "$code_name" rootfs
 }
+function setup_mounts(){
+    if ! is_root; then
+        log_error "setup_mounts needs root permission to run.exiting..."
+        exit 1
+    fi
+    log_info "setting up mounts..."
+    local -r rootfs="$1"
+    pushd "$rootfs" >/dev/null 2>&1
+        mount -t sysfs sysfs sys/
+        mount -t proc  proc proc/
+        mount -o bind /dev dev/
+        mount -o bind /dev/pts dev/pts
+    [[ "$?" != 0 ]] && popd
+    popd >/dev/null 2>&1
+
+}
+function teardown_mounts(){
+    if ! is_root; then
+        log_error "teardown_mounts needs root permission to run.exiting..."
+        exit 1
+    fi
+    local -r rootfs="$1"
+    log_info "tearing down mounts..."
+    pushd "$rootfs" >/dev/null 2>&1
+        umount ./dev/pts
+        umount ./dev
+        umount ./proc
+        umount ./sys
+    [[ "$?" != 0 ]] && popd
+    popd >/dev/null 2>&1
+
+}
+
 function enable_systemd_services(){
     local -r services="$1"
     for i in "${services[@]}"; do
@@ -46,27 +109,83 @@ function enable_systemd_services(){
         run_in_qemu systemctl enable "$i"
     done
 }
-function timezone_setup(){
-    local -r zone="$1"
-    log_info "setting timezone to $zone"
-    local -r target="$SYSROOT/etc/timezone"
-    local -r dir="$(dirname "$target")"
-    log_info "creating parent directory $dir"
-    mkdir -p "$dir"
-    echo "$zone" > "$target"
-}
 function hostname_setup(){
+    if ! is_root; then
+        log_error "hostname_setup needs root permission to run.exiting..."
+        exit 1
+    fi
     local -r host="$1"
+    local -r rootfs="$2"
     log_info "Setting hostname to $host"
-    local -r target="$SYSROOT/etc/hostname"
+    local -r target="$rootfs/etc/hostname"
     local -r dir="$(dirname "$target")"
     log_info "creating parent directory $dir"
     mkdir -p "$dir"
-    echo "$host" > "$target"
+    # echo "$host" > "$target"
+cat > "$target" <<EOF
+    127.0.0.1       localhost
+    ::1             localhost ip6-localhost ip6-loopback
+    ff02::1         ip6-allnodes
+    ff02::2         ip6-allrouters
+    127.0.1.1       $host_name
+EOF
+    chroot rootfs env -i /bin/hostname -F /etc/hostname
+}
+function install_packages(){
+    if ! is_root; then
+        log_error "install_packages needs root permission to run.exiting..."
+        exit 1
+    fi
+    log_info "installing base packages ..."
+    chroot rootfs apt-get update
+    chroot rootfs \
+        env -i HOME="/root" \
+            PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+            TERM="$TERM" \
+            DEBIAN_FRONTEND="noninteractive" \
+        apt-get --yes \
+            -o DPkg::Options::=--force-confdef \
+            install  --no-install-recommends whiptail
+    chroot rootfs \
+        env -i HOME="/root" \
+            PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+            TERM="$TERM" \
+        apt-get --yes \
+            -o DPkg::Options::=--force-confdef install \
+            --no-install-recommends locales
+    chroot rootfs \
+        env -i HOME="/root" \
+            PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+            TERM="$TERM" SHELL="/bin/bash" \
+        dpkg-reconfigure locales
+    chroot rootfs \
+        env -i HOME="/root" \
+            PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+            TERM="$TERM" \
+        apt-get --yes -o DPkg::Options::=--force-confdef install \
+        --no-install-recommends "${main_dependancies[@]}"\
+    chroot rootfs \
+        env -i HOME="/root" \
+            PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+            TERM="$TERM" \
+        apt-get --yes -o DPkg::Options::=--force-confdef upgrade
+    log_info "clearning up after apt ..."
+    chroot rootfs apt-get --yes clean
+    chroot rootfs apt-get --yes autoclean
+    chroot rootfs apt-get --yes autoremove
+}
+function setup_user(){
+    if ! is_root; then
+        log_error "setup_user needs root permission to run.exiting..."
+        exit 1
+    fi
+    chroot rootfs useradd -G sudo,adm -m -s /bin/bash "pixel-c"
+    chroot rootfs sh -c "echo 'pixel-c' | chpasswd"
 }
 function keyboard_setup(){
     log_info "Adding Keyboard to LightDM"
-    local target="$SYSROOT/etc/lightdm/lightdm-gtk-greeter.conf"
+    local -r rootfs="$1"
+    local target="$rootfs/etc/lightdm/lightdm-gtk-greeter.conf"
     local dir="$(dirname "$target")"
     log_info "creating parent directory $dir"
     mkdir -p "$dir"
@@ -87,7 +206,8 @@ EOF
 }
 function wifi_setup(){
     log_info "setting up Wi-Fi connection"
-    local -r target="$SYSROOT/etc/NetworkManager/system-connection/wifi-conn-1"
+    local -r rootfs="$1"
+    local -r target="$rootfs/etc/NetworkManager/system-connection/wifi-conn-1"
     local -r dir="$(dirname "$target")"
     log_info "creating parent directory $dir"
     mkdir -p "$dir"
@@ -118,7 +238,8 @@ EOF
 
 function setup_alarm(){
     log_info "setting up alarm"
-    local -r target="$SYSROOT/home/alarm/.config/openbox/autostart"
+    local -r rootfs="$1"
+    local -r target="$rootfs/home/alarm/.config/openbox/autostart"
     local -r dir="$(dirname "$target")"
     log_info "creating parent directory $dir"
     mkdir -p "$dir"
@@ -130,7 +251,8 @@ EOF
 
 function setup_bcm4354(){
     log_info "Adding BCM4354.hcd"
-    local -r target="$SYSROOT/lib/firmware/brcm/BCM4354.hcd"
+    local -r rootfs="$1"
+    local -r target="$rootfs/lib/firmware/brcm/BCM4354.hcd"
     local -r dir="$(dirname "$target")"
     log_info "creating parent directory $dir"
     mkdir -p "$dir"
@@ -139,11 +261,13 @@ function setup_bcm4354(){
     wget -O "$target" "$url"
 }
 function cleanup(){
-    local -r target="$SYSROOT/var/cache"
+    local -r rootfs="$1"
+    local -r target="$rootfs/var/cache"
     log_info "Removing /var/cache/ content"
     rm -rf "$target"
     mkdir -p "$target"
 }
+############################################# start ###############################################
 if [[  $(string_is_empty_or_null "$RFS_WIFI_SSID") ]]; then
   log_warn "WIFI SSID not set! Using 'Pixel C'";
   WIFI_SSID="Pixel C"
@@ -152,59 +276,62 @@ if [[  $(string_is_empty_or_null "$RFS_WIFI_SSID") ]]; then
   log_warn "WIFI SSID not set! Using 'Pixel C'";
   WIFI_SSID="Pixel C"
 fi
-log_info "running debootstrap for '$deb_arch' architecture with debian codename '$code_name'"
-debootstrap --arch "$deb_arch" "$code_name" "$SYSROOT"
 
-OLDPATH="$PATH"
+HOST_HOSTNAME=`hostname`
+T=$(pwd)
 
-$(timezone_setup "$time_zone")
-run_in_qemu apt-get update
-run_in_qemu apt-get upgrade
-exit 1
-log_info "Installing base packages ${packages[@]}"
-run_in_qemu apt-get install -y "${packages[@]}"
-$(hostname_setup "$host_name")
-$(enable_systemd_services "${systemd_services[@]}")
-$(keyboard_setup)
-$(wifi_setup)
+log_info "making build directory $build_dir"
+mkdir -p "$build_dir"
+ pushd "$build_dir" >/dev/null 2>&1
+    if [[ ! -z "$KB_LAYOUT" -o -! -z "$KB_MAP" ]]; then
+    KB_LAYOUT = "ch"
+    KB_MAP = "de"
+    fi
+    $(prepare_rootfs "$rootfs_dir")
+    $(setup_mounts "$rootfs_dir")
+    $(hostname_setup "$host_name" "$rootfs_dir")
+    $(install_packages)
+    $(setup_user)
+    $(enable_systemd_services "${systemd_services[@]}")
+    $(keyboard_setup "$rootfs_dir")
+    $(wifi_setup "$rootfs_dir")
+    $(setup_alarm "$rootfs_dir")
+    $(setup_bcm4354 "$rootfs")
+    $(cleanup "$rootfs")
+    $(teardown_mounts "$rootfs_dir")
+[[ "$?" != 0 ]] && popd
+popd >/dev/null 2>&1
+log_info "RootFS generation completed."
 
-if [ -z "$KBD_BT_ADDR" ]; then
-  log_info "Configuring BT Keyboard"
-  
-  cat > $SYSROOT/etc/btkbd.conf <<EOF
-BTKBDMAC = ''$KBD_BT_ADDR''
-EOF
-  log_info "=> Adding BT Keyboard service"
 
-  cat > $SYSROOT/etc/systemd/system/btkbd.service <<EOF
-[Unit]
-Description=systemd Unit to automatically start a Bluetooth keyboard
-Documentation=https://wiki.archlinux.org/index.php/Bluetooth_Keyboard
-ConditionPathExists=/etc/btkbd.conf
-ConditionPathExists=/usr/bin/bluetoothctl
+# OLDPATH="$PATH"
+# if [ -z "$KBD_BT_ADDR" ]; then
+#   log_info "Configuring BT Keyboard"
+#   cat > $rootfs_dir/etc/btkbd.conf <<EOF
+# BTKBDMAC = ''$KBD_BT_ADDR''
+# EOF
+#   log_info "=> Adding BT Keyboard service"
+#   cat > $rootfs_dir/etc/systemd/system/btkbd.service <<EOF
+# [Unit]
+# Description=systemd Unit to automatically start a Bluetooth keyboard
+# Documentation=https://wiki.archlinux.org/index.php/Bluetooth_Keyboard
+# ConditionPathExists=/etc/btkbd.conf
+# ConditionPathExists=/usr/bin/bluetoothctl
 
-[Service]
-Type=oneshot
-EnvironmentFile=/etc/btkbd.conf
-ExecStart=/usr/bin/bluetoothctl connect ${BTKBDMAC}
+# [Service]
+# Type=oneshot
+# EnvironmentFile=/etc/btkbd.conf
+# ExecStart=/usr/bin/bluetoothctl connect ${BTKBDMAC}
 
-[Install]
-WantedBy=bluetooth.target
-EOF
-  run_in_qemu systemctl enable btkbd
-fi
+# [Install]
+# WantedBy=bluetooth.target
+# EOF
+#   run_in_qemu systemctl enable btkbd
+# fi
 
-if [ ! -z "$KB_LAYOUT" -o -! -z "$KB_MAP" ]; then
-  KB_LAYOUT = "ch"
-  KB_MAP = "de"
-fi
-$(setup_alarm)
-$(setup_bcm4354)
-$(cleanup)
-log_info "RootFS generation done."
+
 unset RFS_WIFI_SSID
 unset RFS_WIFI_PASSWORD
-unset DISTRO_NAME
 unset code_name
 unset time_zone
 unset host_name
