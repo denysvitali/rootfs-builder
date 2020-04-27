@@ -1,0 +1,13 @@
+{
+    "editor.formatOnSave": true,
+    "emeraldwalk.runonsave": {
+        "autoClearConsole": true,
+        "commands": [
+            {
+                "isAsync": true,
+                // "cmd": "echo $PWD"
+                "cmd": "run-sc"
+            }
+        ]
+    }
+}
