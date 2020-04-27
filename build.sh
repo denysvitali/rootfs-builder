@@ -7,10 +7,11 @@ export ARCH=aarch64
 export RFS_WIFI_SSID="$WIFI_SSID"
 export RFS_WIFI_PASSWORD="$WIFI_PASSWORD"
 assert_not_empty "DISTRO" "$DISTRO" "distro name must be set"
-readonly SYSROOT="$(pwd)/out/$DISTRO/rootfs"
-readonly sysroot_dir="$(dirname "$SYSROOT")"
-log_info "creating parent directory $sysroot_dir"
-mkdir -p "$sysroot_dir"
+# readonly SYSROOT="$(pwd)/out/$DISTRO/rootfs"
+readonly SYSROOT="/tmp/rootfs"
+# readonly sysroot_dir="$(dirname "$SYSROOT")"
+# log_info "creating parent directory $sysroot_dir"
+# mkdir -p "$sysroot_dir"
 log_info "distro is set to $DISTRO"
 log_info "SYSROOT is set to $SYSROOT"
 if [[ ! -d "$SYSROOT" ]]; then
@@ -50,6 +51,10 @@ sudo chmod +s "$SYSROOT/bin/umount"
 sudo chmod +s "$SYSROOT/bin/mount"
 sudo chmod +s "$SYSROOT/bin/su"
 
-pushd "$SYSROOT"
-sudo tar -cpzf "$TOP/out/${DISTRO}_rootfs.tar.gz" .
-popd
+# pushd "$SYSROOT"
+readonly tar_target="$(pwd)/out/${DISTRO}_rootfs.tar.gz"
+readonly tar_target_dir="$(dirname "$SYSROOT")"
+log_info "creating parent directory $tar_target_dir"
+mkdir -p "$tar_target_dir"
+sudo tar -cpzf "$(pwd)/out/${DISTRO}_rootfs.tar.gz" "$SYSROOT"
+# popd
