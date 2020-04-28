@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# shellcheck source=./lib/os/os.sh
+# shellcheck source=./lib/fast_apt/fast_apt.sh
 source "$(cd "$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")" && pwd)/lib/os/os.sh"
 cat "distros/$DISTRO/logo"
 readonly code_name="buster"
@@ -60,9 +60,7 @@ function prepare_rootfs(){
         "binfmt-support"
         "qemu-user-static"
     )
-    for i in "${packages[@]}"; do 
-        apt-get install -y "$i"
-    done    
+    fast_apt "install" "${packages[@]}"
     update-binfmts --enable qemu-aarch64
     log_info "crearting rootfs directory '$rootfs_dir'..."
     mkdir "$rootfs_dir"
