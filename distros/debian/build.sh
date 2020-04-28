@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # shellcheck source=./lib/fast_apt/fast_apt.sh
-source "$(cd "$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")" && pwd)/lib/os/os.sh"
+source "$(cd "$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")" && pwd)/lib/fast_apt/fast_apt.sh"
 cat "distros/$DISTRO/logo"
 readonly code_name="buster"
 readonly time_zone="America/Toronto"
