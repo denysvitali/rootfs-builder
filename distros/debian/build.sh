@@ -278,18 +278,18 @@ fi
 log_info "making build directory $build_dir"
 mkdir -p "$build_dir"
 pushd "$build_dir" >/dev/null 2>&1
-    $(prepare_rootfs)
-    $(setup_mounts)
-    $(hostname_setup "$host_name")
-    $(install_packages)
-    $(setup_user)
-    $(enable_systemd_services "${systemd_services[@]}")
-    $(keyboard_setup)
-    $(wifi_setup)
-    $(setup_alarm)
-    $(setup_bcm4354)
-    $(cleanup)
-    $(teardown_mounts)
+    prepare_rootfs
+    setup_mounts
+    hostname_setup "$host_name"
+    install_packages
+    setup_user
+    enable_systemd_services "${systemd_services[@]}"
+    keyboard_setup
+    wifi_setup
+    setup_alarm
+    setup_bcm4354
+    cleanup
+    teardown_mounts
 [[ "$?" != 0 ]] && popd
 popd >/dev/null 2>&1
 log_info "RootFS generation completed."
