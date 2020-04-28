@@ -264,11 +264,11 @@ function cleanup(){
     mkdir -p "$target"
 }
 ############################################# start ###############################################
-if [[  $(string_is_empty_or_null "$RFS_WIFI_SSID") ]]; then
+if [[  $(string_is_empty_or_null "${RFS_WIFI_SSID+x}") ]]; then
   log_warn "WIFI SSID not set! Using 'Pixel C'";
   WIFI_SSID="Pixel C"
 fi
-if [[  $(string_is_empty_or_null "$RFS_WIFI_SSID") ]]; then
+if [[  $(string_is_empty_or_null "${RFS_WIFI_SSID+x}") ]]; then
   log_warn "WIFI SSID not set! Using 'Pixel C'";
   WIFI_SSID="Pixel C"
 fi

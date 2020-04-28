@@ -3,9 +3,9 @@
 # shellcheck source=./lib/os/os.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/os/os.sh"
 export ARCH=aarch64
-export RFS_WIFI_SSID="$WIFI_SSID"
-export RFS_WIFI_PASSWORD="$WIFI_PASSWORD"
-assert_not_empty "DISTRO" "$DISTRO" "distro name must be set"
+export RFS_WIFI_SSID="${WIFI_SSID+x}"
+export RFS_WIFI_PASSWORD="${WIFI_PASSWORD+x}"
+assert_not_empty "DISTRO" "${DISTRO+x}" "distro name must be set"
 readonly SYSROOT="/tmp/rootfs"
 log_info "distro is set to $DISTRO"
 log_info "SYSROOT is set to $SYSROOT"
