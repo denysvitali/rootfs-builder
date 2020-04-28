@@ -275,9 +275,6 @@ if [[  $(string_is_empty_or_null "$RFS_WIFI_SSID") ]]; then
   WIFI_SSID="Pixel C"
 fi
 
-HOST_HOSTNAME=`hostname`
-T=$(pwd)
-
 log_info "making build directory $build_dir"
 mkdir -p "$build_dir"
 pushd "$build_dir" >/dev/null 2>&1
