@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 
 # shellcheck source=./lib/fast_apt/fast_apt.sh
-source "$(cd "$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")" && pwd)/lib/fast_apt/fast_apt.sh"
-cat "distros/$DISTRO/logo"
+source "$(cd "$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]+x}")")")" && pwd)/lib/fast_apt/fast_apt.sh"
+cat "distros/${DISTRO}/logo"
 readonly code_name="buster"
-readonly time_zone="America/Toronto"
-readonly host_name="pixel-c"
-readonly build_dir="$(pwd)/build"
-readonly rootfs_dir="$build_dir/rootfs"
 readonly main_dependancies=(
     "bash"
     "bluez"
@@ -39,20 +35,17 @@ readonly systemd_services=(
 export DEBIAN_FRONTEND=noninteractive
 export DEBCONF_NONINTERACTIVE_SEEN=true
 
-# function timezone_setup(){
-#     local -r zone="$1"
-#     log_info "setting timezone to $zone"
-#     local -r target="$SYSROOT/etc/timezone"
-#     local -r dir="$(dirname "$target")"
-#     log_info "creating parent directory $dir"
-#     mkdir -p "$dir"
-#     echo "$zone" > "$target"
-# }
+function timezone_setup(){
+    local -r zone="$1"
+    assert_not_empty "zone" "${zone+x}" "time zone must be set"
+    log_info "setting timezone to $zone"
+    local -r target="$rootfs_dir/etc/timezone"
+    local -r dir="$(dirname "$target")"
+    log_info "creating parent directory $dir"
+    mkdir -p "$dir"
+    echo "$zone" > "$target"
+}
 function prepare_rootfs(){
-    if ! is_root; then
-        log_error "prepare_rootfs needs root permission to run.exiting..."
-        exit 1
-    fi
     log_info "preparing rootfs..."
     log_info "installing dependancies..."
     local -r packages=(
@@ -62,40 +55,35 @@ function prepare_rootfs(){
     )
     fast_apt "install" "${packages[@]}"
     update-binfmts --enable qemu-aarch64
+    teardown_mounts || true > /dev/null 2>&1
+    log_info "cleaning up rootfs directory '$rootfs_dir' if it exists ..."
+    rm -rf "$rootfs_dir"
     log_info "crearting rootfs directory '$rootfs_dir'..."
-    mkdir "$rootfs_dir"
+    mkdir -p "$rootfs_dir"
     log_info "setting up keyring for debian "$code_name"..."
-    qemu-debootstrap --include=debian-archive-keyring --arch arm64 "$code_name" "$rootfs_dir"
+    qemu-debootstrap --include=debian-archive-keyring --arch arm64 "$code_name" "$rootfs_dir" || true
 }
 function setup_mounts(){
-    if ! is_root; then
-        log_error "setup_mounts needs root permission to run.exiting..."
-        exit 1
-    fi
+    teardown_mounts || true > /dev/null 2>&1
     log_info "setting up mounts..."
     pushd "$rootfs_dir" >/dev/null 2>&1
-        mount -t sysfs sysfs sys/
-        mount -t proc  proc proc/
-        mount -o bind /dev dev/
-        mount -o bind /dev/pts dev/pts
+        mount -t sysfs sys sys/  >/dev/null 2>&1
+        mount -t proc  proc proc/ >/dev/null 2>&1
+        mount -o bind /dev dev/ >/dev/null 2>&1
+        mount -o bind /dev/pts dev/pts >/dev/null 2>&1
     [[ "$?" != 0 ]] && popd
     popd >/dev/null 2>&1
-
 }
 function teardown_mounts(){
-    if ! is_root; then
-        log_error "teardown_mounts needs root permission to run.exiting..."
-        exit 1
-    fi
     log_info "tearing down mounts..."
     pushd "$rootfs_dir" >/dev/null 2>&1
-        umount ./dev/pts
-        umount ./dev
-        umount ./proc
-        umount ./sys
+        umount -lf "${rootfs_dir}/sys"
+        umount -lf "${rootfs_dir}/proc"
+        umount -lf "${rootfs_dir}/dev"
+        # umount -lf "${rootfs_dir}/dev/pts"
+        umount -lf "${rootfs_dir}/dev"
     [[ "$?" != 0 ]] && popd
     popd >/dev/null 2>&1
-
 }
 
 function enable_systemd_services(){
@@ -110,11 +98,8 @@ function enable_systemd_services(){
     done
 }
 function hostname_setup(){
-    if ! is_root; then
-        log_error "hostname_setup needs root permission to run.exiting..."
-        exit 1
-    fi
     local -r host="$1"
+    assert_not_empty "host" "${host+x}" "host must be set"
     log_info "Setting hostname to $host"
     local -r target="$rootfs_dir/etc/hostname"
     local -r dir="$(dirname "$target")"
@@ -128,13 +113,10 @@ cat > "$target" <<EOF
     ff02::2         ip6-allrouters
     127.0.1.1       $host_name
 EOF
-    chroot "$rootfs_dir" env -i /bin/hostname -F /etc/hostname
+    chroot "$rootfs_dir" env -i /bin/hostname hostname
+
 }
 function install_packages(){
-    if ! is_root; then
-        log_error "install_packages needs root permission to run.exiting..."
-        exit 1
-    fi
     log_info "installing base packages ..."
     chroot "$rootfs_dir" apt-get update
     chroot "$rootfs_dir" \
@@ -174,12 +156,8 @@ function install_packages(){
     chroot "$rootfs_dir" apt-get --yes autoremove
 }
 function setup_user(){
-    if ! is_root; then
-        log_error "setup_user needs root permission to run.exiting..."
-        exit 1
-    fi
-    chroot rootfs useradd -G sudo,adm -m -s /bin/bash "pixel-c"
-    chroot rootfs sh -c "echo 'pixel-c' | chpasswd"
+    chroot "$rootfs_dir" useradd -G sudo,adm -m -s /bin/bash "pixel"
+    chroot "$rootfs_dir" sh -c "echo 'pixel:pixel' | chpasswd"
 }
 function keyboard_setup(){
     log_info "Adding Keyboard to LightDM"
@@ -206,6 +184,16 @@ EOF
 }
 function wifi_setup(){
     log_info "setting up Wi-Fi connection"
+    local wifi_ssid="$1"
+    local wifi_password="$2"
+    if [[  $(string_is_empty_or_null "${wifi_ssid+x}") ]]; then
+        log_warn "WIFI SSID not set! Using 'Pixel C'";
+        wifi_ssid="Pixel C"
+    fi
+    if [[  $(string_is_empty_or_null "${wifi_password+x}") ]]; then
+        log_warn "WIFI Password not set! Using 'connectme!'";
+        wifi_password="connectme!"
+    fi
     local -r target="$rootfs_dir/etc/NetworkManager/system-connection/wifi-conn-1"
     local -r dir="$(dirname "$target")"
     log_info "creating parent directory $dir"
@@ -218,11 +206,11 @@ type=wifi
 permissions=
 [wifi]
 mode=infrastructure
-ssid=$WIFI_SSID
+ssid=$wifi_ssid
 
 [wifi-security]
 key-mgmt=wpa-psk
-psk=$WIFI_PASSWORD
+psk=$wifi_password
 
 [ipv4]
 dns-search=
@@ -264,29 +252,25 @@ function cleanup(){
     mkdir -p "$target"
 }
 ############################################# start ###############################################
-if [[  $(string_is_empty_or_null "${RFS_WIFI_SSID+x}") ]]; then
-  log_warn "WIFI SSID not set! Using 'Pixel C'";
-  WIFI_SSID="Pixel C"
-fi
-if [[  $(string_is_empty_or_null "${RFS_WIFI_SSID+x}") ]]; then
-  log_warn "WIFI SSID not set! Using 'Pixel C'";
-  WIFI_SSID="Pixel C"
-fi
+
 
 log_info "making build directory $build_dir"
 mkdir -p "$build_dir"
 pushd "$build_dir" >/dev/null 2>&1
     prepare_rootfs
     setup_mounts
-    hostname_setup "$host_name"
+    timezone_setup "${time_zone}"
+    hostname_setup "${host_name}"
     install_packages
     setup_user
     enable_systemd_services "${systemd_services[@]}"
     keyboard_setup
-    wifi_setup
+    wifi_setup "${RFS_WIFI_SSID}" "${RFS_WIFI_PASSWORD}" 
     setup_alarm
     setup_bcm4354
     cleanup
+    log_info "leaving chroot"
+    exit
     teardown_mounts
 [[ "$?" != 0 ]] && popd
 popd >/dev/null 2>&1
@@ -317,7 +301,6 @@ log_info "RootFS generation completed."
 # EOF
 #   run_in_qemu systemctl enable btkbd
 # fi
-
 
 unset RFS_WIFI_SSID
 unset RFS_WIFI_PASSWORD

@@ -111,11 +111,11 @@ function apt_cleanup() {
     confirm_sudo
     local -r download_list="/tmp/apt-fast.list"
     if file_exists "$download_list"; then
-        sudo apt-get install -y --fix-broken
+        apt-get install -y --fix-broken
         rm "$download_list"
     fi
-    sudo apt-get clean
-    sudo rm -rf /var/cache/apt/archives/*
+    apt-get clean
+    rm -rf /var/cache/apt/archives/*
 }
 
 function filter_installed() {
@@ -166,7 +166,24 @@ function execute_as_sudo {
                 command sudo "$@"
         fi
 }
-
+function canonic_arch(){
+    local arch="$1"
+    case "$arch" in
+        i*)
+            arch="386"
+        ;;
+        x*)
+            arch="amd64"
+        ;;
+        aarch64)
+            arch="arm64"
+        ;;
+        armv7l)
+            arch="armv7l"
+        ;;
+    esac
+    echo "$arch"
+}
 export -f is_root
 export -f os_command_is_available
 export -f has_sudo
@@ -187,3 +204,4 @@ export -f new_user_as_sudo
 export -f os_name
 export -f get_distro_name
 export -f execute_as_sudo
+export -f canonic_arch

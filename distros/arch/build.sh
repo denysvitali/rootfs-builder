@@ -32,18 +32,18 @@ function e_status(){
 #fi
 
 function run_in_qemu(){
-  PROOT_NO_SECCOMP=1 proot -0 -r $SYSROOT -q qemu-$ARCH-static -b /etc/resolv.conf -b /etc/mtab -b /proc -b /sys $*
+  PROOT_NO_SECCOMP=1 proot -0 -r $rootfs_dir -q qemu-$ARCH-static -b /etc/resolv.conf -b /etc/mtab -b /proc -b /sys $*
 }
 
-if [ -f /tmp/rootfs_builder_$DISTRO.tar.gz ]; then
+if [ -f /tmp/rootfs_builder_${DISTRO}.tar.gz ]; then
   e_status "$DISTRO_NAME tarball is already available in /tmp/, we're going to use this file."
 else
   e_status "Downloading..."
-  wget -O /tmp/rootfs_builder_$DISTRO.tar.gz -q 'http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz'
+  wget -O /tmp/rootfs_builder_${DISTRO}.tar.gz -q 'http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz'
 fi
 
 e_status "Extracting..."
-bsdtar -xpf /tmp/rootfs_builder_$DISTRO.tar.gz -C $SYSROOT
+bsdtar -xpf /tmp/rootfs_builder_${DISTRO}.tar.gz -C $rootfs_dir
 
 e_status "QEMU-chrooting"
 
@@ -75,13 +75,13 @@ networkmanager"
 e_status "Adding Pubkeys..."
 run_in_qemu pacman-key --init
 # HACK: `pacman-key --init && pacman-key --populate archlinuxarm` hangs.
-cp distros/$DISTRO/pacman-gpg/* $SYSROOT/etc/pacman.d/gnupg
+cp distros/${DISTRO}/pacman-gpg/* $rootfs_dir/etc/pacman.d/gnupg
 
 e_status "Installing packages..."
 run_in_qemu pacman -Syu --needed --noconfirm $packages
 
 e_status "Setting hostname..."
-echo "pixel-c" > $SYSROOT/etc/hostname
+echo "pixel-c" > $rootfs_dir/etc/hostname
 
 run_in_qemu systemctl enable NetworkManager
 run_in_qemu systemctl enable lightdm
@@ -89,11 +89,11 @@ run_in_qemu systemctl enable bluetooth
 run_in_qemu systemctl enable dhcpcd
 
 e_status "Adding Keyboard to LightDM"
-sed -i 's/#keyboard=/keyboard=onboard/' $SYSROOT/etc/lightdm/lightdm-gtk-greeter.conf
+sed -i 's/#keyboard=/keyboard=onboard/' $rootfs_dir/etc/lightdm/lightdm-gtk-greeter.conf
 
 e_status "Adding Wi-Fi connection"
-mkdir -p $SYSROOT/etc/NetworkManager/system-connection/
-cat > $SYSROOT/etc/NetworkManager/system-connection/wifi-conn-1 <<EOF
+mkdir -p $rootfs_dir/etc/NetworkManager/system-connection/
+cat > $rootfs_dir/etc/NetworkManager/system-connection/wifi-conn-1 <<EOF
 [connection]
 id=wifi-conn-1
 uuid=4f1ca129-1d42-4b8b-903f-591640da4015
@@ -120,12 +120,12 @@ EOF
 if [ -z "$KBD_BT_ADDR" ]; then
   e_status "Configuring BT Keyboard"
   
-  cat > $SYSROOT/etc/btkbd.conf <<EOF
+  cat > $rootfs_dir/etc/btkbd.conf <<EOF
 BTKBDMAC = ''$KBD_BT_ADDR''
 EOF
   e_status "=> Adding BT Keyboard service"
 
-  cat > $SYSROOT/etc/systemd/system/btkbd.service <<EOF
+  cat > $rootfs_dir/etc/systemd/system/btkbd.service <<EOF
 [Unit]
 Description=systemd Unit to automatically start a Bluetooth keyboard
 Documentation=https://wiki.archlinux.org/index.php/Bluetooth_Keyboard
@@ -157,18 +157,18 @@ Section "InputClass"
 EndSection
 EOF
 
-mkdir -p $SYSROOT/home/alarm/.config/openbox
-cat > $SYSROOT/home/alarm/.config/openbox/autostart <<EOF 
+mkdir -p $rootfs_dir/home/alarm/.config/openbox
+cat > $rootfs_dir/home/alarm/.config/openbox/autostart <<EOF 
 kitty &
 onboard &
 EOF
 
 e_status "Adding BCM4354.hcd"
-wget -O $SYSROOT/lib/firmware/brcm/BCM4354.hcd 'https://github.com/denysvitali/linux-smaug/blob/v4.17-rc3/firmware/bcm4354.hcd?raw=true'
+wget -O $rootfs_dir/lib/firmware/brcm/BCM4354.hcd 'https://github.com/denysvitali/linux-smaug/blob/v4.17-rc3/firmware/bcm4354.hcd?raw=true'
 
 e_status "Removing /var/cache/ content"
-rm -rf $SYSROOT/var/cache
-mkdir -p $SYSROOT/var/cache
+rm -rf $rootfs_dir/var/cache
+mkdir -p $rootfs_dir/var/cache
 
 e_status "RootFS generation done."
 
