@@ -81,7 +81,7 @@ function teardown_mounts(){
         umount -lf "${rootfs_dir}/proc"
         umount -lf "${rootfs_dir}/dev"
         # umount -lf "${rootfs_dir}/dev/pts"
-        umount -lf "${rootfs_dir}/dev"
+        # umount -lf "${rootfs_dir}/dev"
     [[ "$?" != 0 ]] && popd
     popd >/dev/null 2>&1
 }
