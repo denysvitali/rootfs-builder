@@ -12,107 +12,75 @@
   <img src="https://img.shields.io/github/last-commit/da-moon/rootfs-builder/master" alt="GitHub last commit">
 </p>
 
-## setup lxc container
+## manjaro based root-fs tar.gz creation
 
-- create a container called `pixel-c`
+- install instruction set's dependant packages : `aria2(1.25.0>=)` `fastboot` `adb`
+- you can find manjaro arm downloads at this [link](https://osdn.net/projects/manjaro-arm/storage/pbpro/). choose the edition you prefer. in this quide , I will be using `kde-plasma` with version `20.02` found at this [link](https://osdn.net/projects/manjaro-arm/storage/pbpro/kde-plasma/20.02/).
+
+> **[WARN]** do not choose emmc installer , choose the other image. e.g. `Manjaro-ARM-kde-plasma-pbpro-20.02.img.xz`
+
+the following snippet uses `aria2` to quickly download it and save it as `manjaro.img.xz` under `/tmp` directory
 
 ```bash
-lxc launch images:debian/buster pixel-c
+export manjaro_out_name="manjaro"; \
+export manjaro_dir="/tmp"; \
+export manjaro_url="https://osdn.net/projects/manjaro-arm/storage/pbpro/kde-plasma/20.02/Manjaro-ARM-kde-plasma-pbpro-20.02.img.xz"; \
+aria2c -c \
+       -j16 \
+       -x16 \
+       -k 1M \
+       --out="${manjaro_out_name}.img.xz" \
+       --dir="$manjaro_dir" \
+       "$manjaro_url"; \
+unset manjaro_url;
 ```
 
-- create volume for the `pixel-c` container. use `pixel-c` as volume's name
+- extract the downloaded image
 
 ```bash
-export name="pixel-c"; \
-lxc storage volume create default "$name"; \
-unset name;
+unxz "${manjaro_dir}/${manjaro_out_name}.img.xz"
 ```
 
-- mount `pixel-c`  volume to `pixel-c` container
+- we need to calculate offeset to mount the image. use `fdisk -l` to probe images information. you would need `sector size` and `boot start` values. starting offset for mount is equal to `(boot start) x (sector size)`
+
+- you can use the following snippet to get sector size 
 
 ```bash
-export name="pixel-c"; \
-export container="pixel-c"; \
-export path_parent="/mnt/"; \
-lxc config device add "$container" "$name" disk pool=default source="$name" path="$path_parent/$name"; \
-unset name;unset container;unset path_parent;
+fdisk -l "${manjaro_dir}/${manjaro_out_name}.img" | grep -Po '(?<= \= )[^ bytes]+'
 ```
 
-- mount  `pixel-c` volume to host os / host container
-
-> I use a 'master' lxc container as my main environment. create 
-  so I bind the volume to my master container using the above snippet. In case you use you host os as your main environment, bind the volume to it.
-
-- set permissions for the newly mounted folder on you host os
-
-> at this point, you should have a folder called `pixel-c` in `pixel-c` container at `/mnt/` and you should also have a folder at location of you choosing in your host environment. in your host environment , execute the following to take ownership of the created folder 
+- you can use the following snippet to get boot start 
 
 ```bash
-export name="pixel-c"; \
-sudo chown $USER:$USER pixel-c -R ; \
-unset name;
+fdisk -l "${manjaro_dir}/${manjaro_out_name}.img" | grep -v 'sectors' | grep "${manjaro_dir}/${manjaro_out_name}" |  tr -s ' ' | cut -d ' ' -f2
 ```
 
-- get a shell into `pixel-c` container by running the following snippet
+- mount the image based on calculated offset
 
 ```bash
-export container="pixel-c"; \
-lxc exec "$container" bash;
+export offset="32000000"; \
+sudo mkdir -p "/mnt/${manjaro_out_name}"; \
+sudo mount -o loop,offset="${offset}" "${manjaro_dir}/${manjaro_out_name}.img" "/mnt/${manjaro_out_name}";
+unset offset;
 ```
 
-- run the following snippet into `pixel-c` container to setup some base dependancies
+- change directory and archive whatever was inside the mounted directory
+
+> **[WARN]** make sure symlinks are preserved after archiving
 
 ```bash
-apt update && apt install -y curl sudo && $(curl -fsSL https://raw.githubusercontent.com/da-moon/core-utils/master/bin/fast-apt | bash -s -- --init);
-```
-- execute the `rootfs build script` section of this guide inside `pixel-c` container
-
-## rootfs build script
-
-the following snippet will build debian rootfs. 
-set environment variables accordingly
-
-```bash
-export DISTRO="debian"; \
-export WIFI_SSID=<your wifi ssid>; \
-export WIFI_PASSWORD=<your wifi password>; \
-rm -rf rootfs-builder; \
-git clone https://github.com/da-moon/rootfs-builder; \
-pushd rootfs-builder; \
-./build.sh; \
+pushd "/mnt/${manjaro_out_name}"; \
+sudo tar -zcvf "/tmp/${manjaro_out_name}.tar.gz" . ; \
 popd; \
-unset DISTRO;unset WIFI_SSID;unset WIFI_PASSWORD;
+sudo umount /mnt/${manjaro_out_name}; \
+sudo rm -rf /mnt/${manjaro_out_name}; \
+rm "/tmp/${manjaro_out_name}.img"; \
+sudo chown "$UID" "/tmp/${manjaro_out_name}.tar.gz";
 ```
-
 ## setting up your distro on the device
 
 - `Enable USB debugging` and `OEM Unlock` on your pixel c device.
 - exit `pixel-c` container if your shell is still in it. you can use the following snippet
-
-```bash
-exit; \
-unset container;
-```
-
-- install `adb` and `fastboot` in your host environment. in case you are using a debian based distro, you can use the following snippet
-
-```bash
-sudo apt update && sudo apt install -y adb fastboot
-```
-
-- boot your device in `fastboot` mode. you can do so either by holding `power botton + volume down` or by connecting it to your computer while booted in android and using the following adb command :
-
-```bash
-adb reboot bootloader
-```
-
-- make sure bootloader is unlocked by running the following snippet
-> [WARNING] in case it is not unlocked, this snippet will unlock bootloader and dring the process, it will remove all user data. 
-
-```bash
-fastboot flashing unlock
-```
-
 - download `twrp recovery` from this [link](https://dl.twrp.me/dragon/). 
 - boot twrp recovery by running the following snippet
 
@@ -122,21 +90,27 @@ fastboot boot twrp.img
 
 - wipe you `/data/` partition. in twrp recovery, there is a `wipe` option. go there and `factory reset` device
 - mount `/data/` and `/cache/` in twrp
-- download [`busybox`](https://busybox.net/downloads/binaries/) static build for armv8 just in case busybox in twrp has any issue. in case you have `wget` installed, you can use the following snippet
+- download [`busybox`](https://busybox.net/downloads/binaries/) static build for armv8 just in case busybox in twrp has any issue. as an example , the following snippet downloads `busybox 1.31.0`
 
 ```bash
 export busybox_version=1.31.0; \
 export busybox_url="https://busybox.net/downloads/binaries/${busybox_version}-defconfig-multiarch-musl/busybox-armv8l"; \
-wget -O busybox "$busybox_url"; \
-unset busybox_version;unset busybox_url;
+aria2c -c \
+       -j16 \
+       -x16 \
+       -k 1M \
+       --out="busybox" \
+       --dir="$manjaro_dir" \
+       "$busybox_url"; \
+unset busybox_url;unset busybox_version
 ```
 
 - move `busybox` to `/cache/` and generated rootfs to `/data/` your device and then use `adb shell` to get a shell into your pixel c . you can use the following snippet
 
-```
+```bash
 export rootfs="arch_rootfs.tar.gz"; \
-adb push "$rootfs" /data/ && \
-adb push busybox /cache/ && \
+adb push "/tmp/${manjaro_out_name}.tar.gz" /data/ && \
+adb push /tmp/busybox /cache/ && \
 adb shell
 ```
 
@@ -164,4 +138,10 @@ adb reboot bootloader
 export boot_image=boot.img; \
 fastboot flash boot "$boot_image" ; \
 unset  boot_image;
+```
+
+- clean up env vars
+
+```bash
+unset manjaro_out_name;unset manjaro_dir;
 ```
