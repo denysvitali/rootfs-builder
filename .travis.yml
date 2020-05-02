@@ -1,3 +1,5 @@
 distro: bionic
 script:
-  - make
+  - make debian
+  - make arch
+  - make ubuntu
