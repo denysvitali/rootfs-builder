@@ -119,7 +119,7 @@ function teardown_mounts(){
     )
     for i in "${mounts[@]}"; do
         log_info "unmounting $root/$i"
-        umount -lf "$root/$i" || true
+        umount -l -f -v "$root/$i" || true
     done
     rm -v "$lockfile"
 }
@@ -244,10 +244,13 @@ function install_packages(){
                     -o DPkg::Options::=--force-confdef 
                     install --no-install-recommends "${main_dependancies[@]}"
     chroot "$root" \
-        env -i HOME="/root" \
-            PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-            TERM="$TERM" \
-        apt-get --yes -o DPkg::Options::=--force-confdef upgrade
+        env -i \
+                HOME="/root" \
+                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+                TERM="$TERM" \
+            fast-apt \
+                -o DPkg::Options::=--force-confdef \
+                upgrade
     log_info "clearning up after apt ..."
     chroot "$root" apt-get --yes clean
     chroot "$root" apt-get --yes autoclean

@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 # https://gist.github.com/logarytm/26d11d9476757fe43a82959f5bc341b5
-set -e
+set -o errtrace
+set -o functrace
+set -o errexit
+set -o nounset
+set -o pipefail
+export PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+# set -e
+
 
 function finish() {
-  local -r root="$1"
+  local root="$1"
   root="$(realpath "$root")"
   if [ "x$(unlock)" != "x0" ]; then
     return 0
@@ -37,7 +44,7 @@ function finish() {
     )
     for i in "${mounts[@]}"; do
         echo "unmounting $root/$i"
-        umount -lf "$root/$i" || true
+        umount -l -f -v  "$root/$i" || true
     done
     rm -v "$lockfile"
 }

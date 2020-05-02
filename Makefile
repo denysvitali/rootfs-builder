@@ -61,6 +61,7 @@ $(UNMOUNT_TARGETS):
 	- $(eval name=$(@:unmount-%=%))
 	- $(eval command=$(PWD)$(PSEP)contrib$(PSEP)scripts$(PSEP)sanechroot)
 	- chmod +x $(command)
+	- $(eval command=$(command) $(BUILD_DIR)$(PSEP)$(name))
     ifeq ($(DOCKER_ENV),true)
 	- @$(MAKE) --no-print-directory \
 	 -f $(THIS_FILE) shell \
