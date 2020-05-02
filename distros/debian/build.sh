@@ -11,6 +11,25 @@ readonly default_time_zone="America/Toronto"
 readonly default_wifi_ssid="Pixel C"
 readonly default_wifi_password="connectme!"
 readonly lockfile="/tmp/chroot-lockfile"
+readonly default_user="pixel"
+
+function run_in_chroot(){
+    local -r root="$1"
+    assert_not_empty "root" "${root+x}" "root filesystem directory is needed"
+    shift;
+    local  commands=("$@")
+    for i in "${commands[@]}"; do
+    log_info "chroot: '$i'"
+    chroot "$root" \
+        env -i \
+            HOME="/root" \
+            PATH="/bin:/usr/bin:/usr/local/bin:/sbin:/usr/sbin" \
+            SHELL="/bin/bash" \
+            TERM="$TERM" \
+            DEBIAN_FRONTEND="noninteractive" \
+            $i 
+    done
+}
 function lock() {
   local count
   count="$(cat "$lockfile" 2>/dev/null || echo 0)"
@@ -65,7 +84,7 @@ function prepare_rootfs(){
     update-binfmts --enable "qemu-${arch}"
     teardown_mounts "$root" || true > /dev/null 2>&1
     log_info "cleaning up rootfs directory '$root' if it exists ..."
-    rm -rf "$root"
+    # rm -rf "$root"
     log_info "crearting rootfs directory '$root'..."
     mkdir -p "$root"
     log_info "setting up keyring for debian "$code_name"..."
@@ -131,11 +150,7 @@ function enable_systemd_services(){
     local -r services="$1"
     for i in "${services[@]}"; do
         log_info "enabling service $i"
-        chroot "$root" \
-        env -i HOME="/root" \
-            PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-            TERM="$TERM" \
-            systemctl enable "$i"
+        run_in_chroot "$root" "systemctl enable $i"
     done
 }
 function hostname_setup(){
@@ -155,7 +170,7 @@ cat > "$target" <<EOF
     ff02::2         ip6-allrouters
     127.0.1.1       $host_name
 EOF
-    chroot "$root" env -i /bin/hostname hostname
+    run_in_chroot "$root" "/bin/hostname hostname"
 
 }
 function install_packages(){
@@ -165,9 +180,8 @@ function install_packages(){
     local -r main_dependancies=(
         "bash"
         "bluez"
-        # "sudo"
+        "sudo"
         "binutils"
-        # "ubuntu-minimal"
         "network-manager"
         "lightdm"
         "lightdm-gtk-greeter"
@@ -187,92 +201,130 @@ function install_packages(){
         "htop"
         "man-db" 
         "lsof"
+        "aria2"
+        "apt-utils" 
+        "unzip" 
+        "build-essential" 
+        "software-properties-common"
+        "make" 
+        "vim" 
+        "nano" 
+        "ca-certificates"
+        "wget" 
+        "jq" 
+        "apt-transport-https" 
+        "parallel"
+        "gcc"
+        "g++"
+        "ufw"
+        "progress"
+        "bzip2"
+        "strace"
+        "tmux"
+        "zip"
     )
-    
+    local commands=(
+        "apt-get update"
+        "apt-get --yes -o DPkg::Options::=--force-confdef install netselect-apt"
+        "rm -rf  /etc/apt/sources-fast*"
+        "netselect-apt  --tests 15 --sources --outfile /etc/apt/sources-fast.list stable"
+        "apt-get update"
+        "apt-get --yes -o DPkg::Options::=--force-confdef install whiptail locales wget curl"
+        "locale-gen en_US.UTF-8"
+        "apt-get --yes -o DPkg::Options::=--force-confdef install ${main_dependancies[@]}"
+        "apt-get  --yes -o DPkg::Options::=--force-confdef upgrade"
+        "apt-get --yes clean"
+        "apt-get --yes autoclean"
+        "apt-get --yes autoremove"
+    )
+    run_in_chroot "root" "${command[@]}"
 
-    chroot "$root" apt-get update
-    chroot "$root" \
-        env -i \
-                HOME="/root" \
-                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-                TERM="$TERM" \
-                DEBIAN_FRONTEND="noninteractive" \
-            apt-get --yes \
-                -o DPkg::Options::=--force-confdef \
-                install wget curl netselect-apt
-    chroot "$root" \
-        env -i \
-                HOME="/root" \
-                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-                TERM="$TERM" \
-                DEBIAN_FRONTEND="noninteractive" \
-            netselect-apt 
-                --tests 15 \
-                --sources \
-                --outfile /etc/apt/sources-fast.list \
-            stable && \
-            apt-get update
-    chroot "$root" \
-        env -i \
-                HOME="/root" \
-                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-                TERM="$TERM" \
-                DEBIAN_FRONTEND="noninteractive" \
-            apt-get --yes \
-                -o DPkg::Options::=--force-confdef \
-                install  --no-install-recommends whiptail
-    chroot "$root" \
-        env -i \
-                HOME="/root" \
-                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-                TERM="$TERM" \
-            apt-get --yes \
-                -o DPkg::Options::=--force-confdef install \
-                --no-install-recommends locales
-    chroot "$root" \
-        env -i \
-                HOME="/root" \
-                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-                TERM="$TERM" \
-                SHELL="/bin/bash" \
-            locale-gen en_US.UTF-8
-    chroot "$root" \
-        env -i \
-                HOME="/root" \
-                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-                TERM="$TERM" \
-            wget -q -O \
-                /usr/bin/fast-apt \
-                https://raw.githubusercontent.com/da-moon/core-utils/master/bin/fast-apt && \
-            chmod +x /usr/bin/fast-apt && \
-            fast-apt --init
-    chroot "$root" apt-get update
-    chroot "$root" \
-        env -i \
-                HOME="/root" \
-                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-                TERM="$TERM" \
-            fast-apt \
-                    -o DPkg::Options::=--force-confdef 
-                    install --no-install-recommends "${main_dependancies[@]}"
-    chroot "$root" \
-        env -i \
-                HOME="/root" \
-                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-                TERM="$TERM" \
-            fast-apt \
-                -o DPkg::Options::=--force-confdef \
-                upgrade
-    log_info "clearning up after apt ..."
-    chroot "$root" apt-get --yes clean
-    chroot "$root" apt-get --yes autoclean
-    chroot "$root" apt-get --yes autoremove
+    # log_info "updating apt sources"
+    # chroot "$root" apt-get update
+    # log_info "updating installing netselect-apt"
+    # chroot "$root" \
+    #         env -i \
+    #             HOME="/root" \
+    #             PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+    #             SHELL="/bin/bash" \
+    #             TERM="$TERM" \
+    #             DEBIAN_FRONTEND="noninteractive" \
+    #         apt-get --yes \
+    #             -o DPkg::Options::=--force-confdef \
+    #             install netselect-apt 
+    # log_info "removing fast-sources if it exist"
+    # chroot "$root" rm -rf  /etc/apt/sources-fast* 
+    # log_info "using netselct apt to find fastest sources"
+    #     chroot "$root" \
+    #         env -i \
+    #             HOME="/root" \
+    #             PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+    #             SHELL="/bin/bash" \
+    #             TERM="$TERM" \
+    #             DEBIAN_FRONTEND="noninteractive" \
+    #         netselect-apt  --tests 15 \
+    #             --sources \
+    #             --outfile /etc/apt/sources-fast.list \
+    #         stable
+    # log_info "updating apt sources to use fastest servers"
+    # chroot "$root" apt-get update
+    # log_info "installing whiptail locales wget curl"
+    # chroot "$root" \
+    #     env -i \
+    #             HOME="/root" \
+    #             PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+    #             TERM="$TERM" \
+    #             SHELL="/bin/bash" \
+    #             DEBIAN_FRONTEND="noninteractive" \
+    #         apt-get --yes \
+    #             -o DPkg::Options::=--force-confdef \
+    #             install whiptail locales wget curl 
+    # log_info "setting locals to en_US.UTF-8"
+    # chroot "$root" \
+    #     env -i \
+    #             HOME="/root" \
+    #             PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+    #             TERM="$TERM" \
+    #             SHELL="/bin/bash" \
+    #             DEBIAN_FRONTEND="noninteractive" \
+    #         locale-gen en_US.UTF-8
+    # log_info "installing packages"
+    # chroot "$root" \
+    #     env -i \
+    #             HOME="/root" \
+    #             PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+    #             SHELL="/bin/bash" \
+    #             TERM="$TERM" \
+    #             DEBIAN_FRONTEND="noninteractive" \
+    #         apt-get --yes \
+    #             -o DPkg::Options::=--force-confdef \
+    #             install "${main_dependancies[@]}"
+    # log_info "upgrading software"
+    # chroot "$root" \
+    #     env -i \
+    #             HOME="/root" \
+    #             PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+    #             SHELL="/bin/bash" \
+    #             TERM="$TERM" \
+    #             DEBIAN_FRONTEND="noninteractive" \
+    #         apt-get  --yes \
+    #             -o DPkg::Options::=--force-confdef \
+    #             upgrade
+    # log_info "clearning up after apt ..."
+    # chroot "$root" apt-get --yes clean
+    # chroot "$root" apt-get --yes autoclean
+    # chroot "$root" apt-get --yes autoremove
 }
 function setup_user(){
     local -r root="$1"
     assert_not_empty "root" "${root+x}" "root filesystem directory is needed"
-    chroot "$root" useradd -G sudo,adm -m -s /bin/bash "pixel"
-    chroot "$root" sh -c "echo 'pixel:pixel' | chpasswd"
+    local commands=(
+        "deluser --remove-home ${default_user} || true"
+        "useradd -l -G sudo,adm -md /home/$default_user -s /bin/bash -p password $default_user || true"
+    )
+    run_in_chroot "root" "${commands[@]}"
+
+
 }
 function keyboard_setup(){
     log_info "Adding Keyboard to LightDM"
@@ -363,7 +415,7 @@ function setup_bcm4354(){
 }
 function cleanup(){
     log_info "Cleaning up ...."
-    loacl -r root="$1"
+    local -r root="$1"
     assert_not_empty "root" "${root+x}" "root filesystem directory is needed"
     local -r target="$root/var/cache"
     rm -rf "$target"
@@ -457,7 +509,7 @@ function build_debian(){
         log_info "leaving chroot"
         teardown_mounts "$root"  
         chown -R 0:0 "$root/"
-        chown -R 1000:1000 "$root/home/pixel" || true
+        chown -R 1000:1000 "$root/home/$default_user" || true
         chown -R 1000:1000 "$root/home/alarm" || true
         chmod +s "$root/usr/bin/chfn"
         chmod +s "$root/usr/bin/newgrp"
