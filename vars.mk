@@ -4,7 +4,7 @@ include contrib/makefiles/pkg/base/base.mk
 DOCKER_ENV = false
 BUILDER_IMAGE=debian:buster
 BUILDER_CONTAINER_NAME=rootfs_builder
-BUILDER_CONTAINER_MOUNT_POINT=/tmp/
+BUILDER_CONTAINER_MOUNT_POINT=$(pwd)
 
 ARCH=aarch64
 # include this in case distro has a code name

@@ -76,7 +76,7 @@ function setup_mounts(){
     log_info "setting up mounts..."
     local -r root="$1"
     assert_not_empty "root" "${root+x}" "root filesystem directory is needed"
-    trap teardown_mounts "$root"  EXIT
+     teardown_mounts "$root"  
     lock
     pushd "$root" >/dev/null 2>&1
         mount -t sysfs "sys" "sys/"  || true
@@ -199,7 +199,19 @@ function install_packages(){
                 DEBIAN_FRONTEND="noninteractive" \
             apt-get --yes \
                 -o DPkg::Options::=--force-confdef \
-                install wget curl 
+                install wget curl netselect-apt
+    chroot "$root" \
+        env -i \
+                HOME="/root" \
+                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+                TERM="$TERM" \
+                DEBIAN_FRONTEND="noninteractive" \
+            netselect-apt 
+                --tests 15 \
+                --sources \
+                --outfile /etc/apt/sources-fast.list \
+            stable && \
+            apt-get update
     chroot "$root" \
         env -i \
                 HOME="/root" \
@@ -443,7 +455,7 @@ function build_debian(){
         setup_bcm4354 "$root"
         cleanup "$root"
         log_info "leaving chroot"
-        trap teardown_mounts "$root"  EXIT
+        teardown_mounts "$root"  
         chown -R 0:0 "$root/"
         chown -R 1000:1000 "$root/home/pixel" || true
         chown -R 1000:1000 "$root/home/alarm" || true
