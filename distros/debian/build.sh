@@ -48,13 +48,15 @@ function prepare_rootfs(){
         "binfmt-support"
         "qemu-user-static"
     )
-    fast_apt "install" "${packages[@]}"
+    apt-get update
+    apt-get install -y "${packages[@]}"
     if [[ ! -f "/lib/binfmt.d/qemu-${arch}-static.conf" ]]; then
         mkdir -p "/lib/binfmt.d/"
         pushd "/tmp/" >/dev/null 2>&1
-            git clone https://github.com/computermouth/qemu-static-conf.git /tmp/qemu-static-conf
-            cp /tmp/qemu-static-conf.conf /lib/binfmt.d/
-            rm -rf /tmp/qemu-static-conf
+            rm -rf qemu-static-conf
+            git clone https://github.com/computermouth/qemu-static-conf.git
+            cp /tmp/qemu-static-conf/*.conf /lib/binfmt.d/
+            rm -rf qemu-static-conf
             systemctl restart systemd-binfmt.service
         [[ "$?" != 0 ]] && popd
         popd >/dev/null 2>&1
@@ -86,7 +88,7 @@ function setup_mounts(){
 }
 function teardown_mounts(){
     log_info "tearing down mounts..."
-    local -r root="$1"
+    local root="$1"
     assert_not_empty "root" "${root+x}" "root filesystem directory is needed"
     root="$(realpath "$root")"
     if [ "x$(unlock)" != "x0" ]; then

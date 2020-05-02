@@ -59,11 +59,8 @@ endif
 $(UNMOUNT_TARGETS): 
 	- $(call print_running_target)
 	- $(eval name=$(@:unmount-%=%))
-	- $(eval command=umount -lf $(BUILD_DIR)$(PSEP)$(name)$(PSEP)sys)
-	- $(eval command=$(command) || umount -lf $(BUILD_DIR)$(PSEP)$(name)$(PSEP)proc)
-	- $(eval command=$(command) || umount -lf $(BUILD_DIR)$(PSEP)$(name)$(PSEP)dev/pts)
-	- $(eval command=$(command) || umount -lf $(BUILD_DIR)$(PSEP)$(name)$(PSEP)dev)
-	- $(eval command=$(command) || true)
+	- $(eval command=$(PWD)$(PSEP)contrib$(PSEP)scripts$(PSEP)sanechroot)
+	- chmod +x $(command)
     ifeq ($(DOCKER_ENV),true)
 	- @$(MAKE) --no-print-directory \
 	 -f $(THIS_FILE) shell \
