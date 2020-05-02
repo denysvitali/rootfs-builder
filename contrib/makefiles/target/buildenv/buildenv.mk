@@ -26,7 +26,7 @@ ifeq ($(DOCKER_ENV),true)
 	- @docker pull ${DOCKER_IMAGE}
     endif
     ifneq ($(CONTAINER_RUNNING),true)
-	- @docker run --entrypoint "/bin/bash" -v ${CURDIR}:${DOCKER_CONTAINER_MOUNT_POINT} --name ${DOCKER_CONTAINER_NAME} --rm -d -i -t ${DOCKER_IMAGE} -c tail -f /dev/null
+	- @docker run --privileged --entrypoint "/bin/bash" -v ${CURDIR}:${DOCKER_CONTAINER_MOUNT_POINT} --name ${DOCKER_CONTAINER_NAME} --rm -d -i -t ${DOCKER_IMAGE} -c tail -f /dev/null
     ifneq ($(STARTUP_SCRIPT),)
 	- @docker exec --workdir ${DOCKER_CONTAINER_MOUNT_POINT} ${DOCKER_CONTAINER_NAME} /bin/bash -c "${STARTUP_SCRIPT}"
     endif
