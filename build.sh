@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+log_error "use make targets ..."
+exit 1
+
 # shellcheck source=./lib/os/os.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/os/os.sh"
 # fuser -k -9 rootfs-builder/build/rootfs/dev/pts
@@ -9,6 +12,7 @@ if ! is_root; then
 fi
 export ARCH=aarch64
 export RFS_WIFI_SSID="${WIFI_SSID+x}"
+export RFS_WIFI_SSID="${WIFI_SSID+x}"
 export RFS_WIFI_PASSWORD="${WIFI_PASSWORD+x}"
 if [[  -z ${DISTRO+x} ]]; then
     log_warn "DISTRO not set! Using 'debian'";
@@ -17,7 +21,7 @@ fi
 assert_not_empty DISTRO "${DISTRO}" "distro name must be set"
 export time_zone="America/Toronto"
 export host_name="pixel-c"
-export build_dir="$(pwd)/build"
+export build_dir="$(pwd)/out"
 export rootfs_dir="$build_dir/rootfs"
 log_info "distro is set to ${DISTRO}"
 log_info "rootfs_dir is set to $rootfs_dir"
