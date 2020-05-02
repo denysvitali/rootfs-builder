@@ -1,4 +1,4 @@
-include makefiles/pkg/base/base.mk
+include contrib/makefiles/pkg/base/base.mk
 
 # toggle this as needed - true | false
 DOCKER_ENV = false

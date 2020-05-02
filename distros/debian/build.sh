@@ -10,6 +10,18 @@ readonly default_host_name="pixel-c"
 readonly default_time_zone="America/Toronto"
 readonly default_wifi_ssid="Pixel C"
 readonly default_wifi_password="connectme!"
+readonly lockfile="/tmp/chroot-lockfile"
+function lock() {
+  local count
+  count="$(cat "$lockfile" 2>/dev/null || echo 0)"
+  echo $(expr "$count" + 1) > "$lockfile"
+}
+
+function unlock() {
+  local count
+  count="$(cat "$lockfile")"
+  echo $(expr "$count" - 1) | tee "$lockfile"
+}
 function timezone_setup(){
     local -r root="$1"
     local -r zone="$2"
@@ -62,12 +74,13 @@ function setup_mounts(){
     log_info "setting up mounts..."
     local -r root="$1"
     assert_not_empty "root" "${root+x}" "root filesystem directory is needed"
-    teardown_mounts "$root" || true > /dev/null 2>&1
+    trap teardown_mounts "$root"  EXIT
+    lock
     pushd "$root" >/dev/null 2>&1
-        mount -t sysfs "sys" "sys/"  >/dev/null 2>&1
-        mount -t proc  "proc" "proc/" >/dev/null 2>&1
-        mount -o bind "/dev" "dev/" >/dev/null 2>&1
-        mount -o bind "/dev/pts" "dev/pts" >/dev/null 2>&1
+        mount -t sysfs "sys" "sys/"  || true
+        mount -t proc  "proc" "proc/" || true
+        mount -o bind "/dev" "dev/" || true
+        mount -o bind "/dev/pts" "dev/pts" || true
     [[ "$?" != 0 ]] && popd
     popd >/dev/null 2>&1
 }
@@ -75,14 +88,38 @@ function teardown_mounts(){
     log_info "tearing down mounts..."
     local -r root="$1"
     assert_not_empty "root" "${root+x}" "root filesystem directory is needed"
-    pushd "$root" >/dev/null 2>&1
-        umount -lf "sys" || \
-        umount -lf "proc" || \
-        umount -lf "dev/pts" || \
-        umount -lf "dev" || 
-        # umount -lf "${root}/dev"
-    [[ "$?" != 0 ]] && popd
-    popd >/dev/null 2>&1
+    root="$(realpath "$root")"
+    if [ "x$(unlock)" != "x0" ]; then
+        return 0
+    else
+        echo "Shutting down..."
+    fi
+
+    found=1
+    while [ "x$found" = "x1" ]; do
+        found=0
+        for pid in $(ls -1 /proc); do
+        link=$(readlink /proc/$pid/root || true)
+        if [ "x$link" != "x" ]; then
+            if [ "x${link:0:${#root}}" == "x$root" ]; then
+            kill -9 $pid && echo "Killed process $pid" || true
+            found=1
+            fi
+        fi
+        done
+    done
+
+    local -r mounts=(
+        "sys"
+        "proc"
+        "dev/pts"
+        "dev"
+    )
+    for i in "${mounts[@]}"; do
+        log_info "unmounting $root/$i"
+        umount -lf "$root/$i" || true
+    done
+    rm -v "$lockfile"
 }
 
 function enable_systemd_services(){
@@ -126,9 +163,9 @@ function install_packages(){
     local -r main_dependancies=(
         "bash"
         "bluez"
-        "sudo"
+        # "sudo"
         "binutils"
-        "ubuntu-minimal"
+        # "ubuntu-minimal"
         "network-manager"
         "lightdm"
         "lightdm-gtk-greeter"
@@ -144,34 +181,66 @@ function install_packages(){
         "bash-completion" 
         "ifupdown" 
         "systemd"
+        "time"
+        "htop"
+        "man-db" 
+        "lsof"
     )
+    
+
     chroot "$root" apt-get update
     chroot "$root" \
-        env -i HOME="/root" \
-            PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-            TERM="$TERM" \
-            DEBIAN_FRONTEND="noninteractive" \
-        apt-get --yes \
-            -o DPkg::Options::=--force-confdef \
-            install  --no-install-recommends whiptail
+        env -i \
+                HOME="/root" \
+                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+                TERM="$TERM" \
+                DEBIAN_FRONTEND="noninteractive" \
+            apt-get --yes \
+                -o DPkg::Options::=--force-confdef \
+                install wget curl 
     chroot "$root" \
-        env -i HOME="/root" \
-            PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-            TERM="$TERM" \
-        apt-get --yes \
-            -o DPkg::Options::=--force-confdef install \
-            --no-install-recommends locales
+        env -i \
+                HOME="/root" \
+                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+                TERM="$TERM" \
+                DEBIAN_FRONTEND="noninteractive" \
+            apt-get --yes \
+                -o DPkg::Options::=--force-confdef \
+                install  --no-install-recommends whiptail
     chroot "$root" \
-        env -i HOME="/root" \
-            PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-            TERM="$TERM" SHELL="/bin/bash" \
-        dpkg-reconfigure locales
+        env -i \
+                HOME="/root" \
+                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+                TERM="$TERM" \
+            apt-get --yes \
+                -o DPkg::Options::=--force-confdef install \
+                --no-install-recommends locales
     chroot "$root" \
-        env -i HOME="/root" \
-            PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
-            TERM="$TERM" \
-        apt-get --yes -o DPkg::Options::=--force-confdef install \
-        --no-install-recommends "${main_dependancies[@]}"\
+        env -i \
+                HOME="/root" \
+                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+                TERM="$TERM" \
+                SHELL="/bin/bash" \
+            locale-gen en_US.UTF-8
+    chroot "$root" \
+        env -i \
+                HOME="/root" \
+                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+                TERM="$TERM" \
+            wget -q -O \
+                /usr/bin/fast-apt \
+                https://raw.githubusercontent.com/da-moon/core-utils/master/bin/fast-apt && \
+            chmod +x /usr/bin/fast-apt && \
+            fast-apt --init
+    chroot "$root" apt-get update
+    chroot "$root" \
+        env -i \
+                HOME="/root" \
+                PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+                TERM="$TERM" \
+            fast-apt \
+                    -o DPkg::Options::=--force-confdef 
+                    install --no-install-recommends "${main_dependancies[@]}"
     chroot "$root" \
         env -i HOME="/root" \
             PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
@@ -356,8 +425,6 @@ function build_debian(){
     fi
     log_info "setting ownership of '$root' to '$UID'  "
     chown -R "$UID:$UID" "$root" || true >/dev/null 2>&1
-
-    # pushd "$build_dir" >/dev/null 2>&1
         prepare_rootfs "$root" "$arch" "$code_name"
         setup_mounts "$root"
         timezone_setup "$root" "${time_zone}"
@@ -371,25 +438,22 @@ function build_debian(){
         setup_bcm4354 "$root"
         cleanup "$root"
         log_info "leaving chroot"
-        exit
-        teardown_mounts
-    # [[ "$?" != 0 ]] && popd
-    # popd >/dev/null 2>&1
-    chown -R 0:0 "$root/"
-    chown -R 1000:1000 "$root/home/pixel" || true
-    chown -R 1000:1000 "$root/home/alarm" || true
-    chmod +s "$root/usr/bin/chfn"
-    chmod +s "$root/usr/bin/newgrp"
-    chmod +s "$root/usr/bin/passwd"
-    chmod +s "$root/usr/bin/chsh"
-    chmod +s "$root/usr/bin/gpasswd"
-    chmod +s "$root/bin/umount"
-    chmod +s "$root/bin/mount"
-    chmod +s "$root/bin/su"
-    tar_archive "$root"
-    unset DEBIAN_FRONTEND
-    unset DEBCONF_NONINTERACTIVE_SEEN
-    log_info "RootFS generation completed and stored at '$root'"
+        trap teardown_mounts "$root"  EXIT
+        chown -R 0:0 "$root/"
+        chown -R 1000:1000 "$root/home/pixel" || true
+        chown -R 1000:1000 "$root/home/alarm" || true
+        chmod +s "$root/usr/bin/chfn"
+        chmod +s "$root/usr/bin/newgrp"
+        chmod +s "$root/usr/bin/passwd"
+        chmod +s "$root/usr/bin/chsh"
+        chmod +s "$root/usr/bin/gpasswd"
+        chmod +s "$root/bin/umount"
+        chmod +s "$root/bin/mount"
+        chmod +s "$root/bin/su"
+        tar_archive "$root"
+        unset DEBIAN_FRONTEND
+        unset DEBCONF_NONINTERACTIVE_SEEN
+        log_info "RootFS generation completed and stored at '$root.tar.gz'"
 }
 
 function help() {

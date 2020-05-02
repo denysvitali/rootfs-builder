@@ -1,8 +1,8 @@
 include vars.mk
-include makefiles/pkg/string/string.mk
-include makefiles/pkg/color/color.mk
-include makefiles/pkg/functions/functions.mk
-include makefiles/target/buildenv/buildenv.mk
+include contrib/makefiles/pkg/string/string.mk
+include contrib/makefiles/pkg/color/color.mk
+include contrib/makefiles/pkg/functions/functions.mk
+include contrib/makefiles/target/buildenv/buildenv.mk
 # include build/makefiles/target/go/go.mk
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 SELF_DIR := $(dir $(THIS_FILE))
