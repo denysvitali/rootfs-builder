@@ -16,7 +16,7 @@ CLEAN_TARGETS = $(DISTROS:%=clean-%)
 
 .PHONY: $(BUILD_TARGETS)
 .SILENT: $(BUILD_TARGETS)
-$(BUILD_TARGETS): $(CLEAN_TARGETS)
+$(BUILD_TARGETS): 
 	- $(call print_running_target)
 	- $(eval name=$(@:build-%=%))
 	- $(eval command=$(PWD)$(PSEP)distros$(PSEP)$(name)$(PSEP)build.sh)
@@ -59,9 +59,8 @@ endif
 $(UNMOUNT_TARGETS): 
 	- $(call print_running_target)
 	- $(eval name=$(@:unmount-%=%))
-	- $(eval command=$(PWD)$(PSEP)contrib$(PSEP)scripts$(PSEP)sanechroot)
-	- chmod +x $(command)
-	- $(eval command=$(command) $(BUILD_DIR)$(PSEP)$(name))
+	- $(eval command=umount -lv $(BUILD_DIR)$(PSEP)$(name)$(PSEP)dev$(PSEP)ptr)
+	- $(eval command=$(command) || umount -lv $(BUILD_DIR)$(PSEP)$(name)$(PSEP)* || true)
     ifeq ($(DOCKER_ENV),true)
 	- @$(MAKE) --no-print-directory \
 	 -f $(THIS_FILE) shell \
